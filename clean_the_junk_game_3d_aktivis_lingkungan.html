@@ -22,7 +22,7 @@
       height: 100%;
       overflow: hidden;
       font-family: 'Inter', system-ui, -apple-system, sans-serif;
-      background: #120c24;
+      background: #050814;
     }
     #game-container {
       position: fixed;
@@ -617,8 +617,8 @@
 
       function initThree() {
         scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x150f28);
-        scene.fog = new THREE.FogExp2(0x2c1a3b, 0.012);
+        scene.background = new THREE.Color(0x060913);
+        scene.fog = new THREE.FogExp2(0x0a1226, 0.012);
 
         camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.1, 260);
         camera.rotation.order = 'YXZ';
@@ -632,12 +632,12 @@
 
         clock = new THREE.Clock();
 
-        // Lights: Nuansa senja dramatis (Cahaya matahari terbenam oranye hangat + pantulan langit violet senja)
-        const hemiLight = new THREE.HemisphereLight(0x8a5e98, 0x223526, 0.9);
+        // Lights: Nuansa malam atmosferik (Cahaya rembulan keperakan / Moonlight + pantulan langit malam)
+        const hemiLight = new THREE.HemisphereLight(0x27416e, 0x0f1c14, 0.75);
         scene.add(hemiLight);
 
-        const dirLight = new THREE.DirectionalLight(0xff9459, 1.15);
-        dirLight.position.set(30, 20, 22);
+        const dirLight = new THREE.DirectionalLight(0xb4d3fa, 0.95);
+        dirLight.position.set(-35, 45, -30);
         dirLight.castShadow = true;
         dirLight.shadow.mapSize.width = 1024;
         dirLight.shadow.mapSize.height = 1024;
@@ -666,26 +666,23 @@
       }
 
       function buildSkyDomeAndStars() {
-        // 1. Kubah Langit Senja Gradasi (Horizon oranye keemasan -> Ungu kemerahan -> Biru dongker malam)
+        // 1. Kubah Langit Malam Gradasi (Horizon biru navy gelap -> Tengah malam biru gelap -> Puncak hitam pekat)
         const domeGeo = new THREE.SphereGeometry(125, 36, 26, 0, Math.PI * 2, 0, Math.PI * 0.5);
         const pos = domeGeo.attributes.position;
         const colors = [];
 
-        const colHorizon = new THREE.Color(0xf07b3b);    // Oranye keemasan senja di garis cakrawala
-        const colSunsetRose = new THREE.Color(0xb53c69);  // Ungu kemerahan senja (sunset rose)
-        const colDuskViolet = new THREE.Color(0x4b2360);  // Violet senja pekat
-        const colNightNavy = new THREE.Color(0x0e0d29);   // Biru dongker gelap langit malam di kubah atas
+        const colHorizon = new THREE.Color(0x0e1b38); // Biru navy gelap di batas cakrawala
+        const colMidSky = new THREE.Color(0x060f24);  // Biru malam pekat
+        const colZenith = new THREE.Color(0x02040b);  // Hitam pekat angkasa malam di puncak langit
 
         for (let i = 0; i < pos.count; i++) {
           const y = pos.getY(i);
           const ratio = Math.max(0, Math.min(1, y / 125)); // 0 di cakrawala, 1 di puncak langit
           let c;
-          if (ratio < 0.22) {
-            c = colHorizon.clone().lerp(colSunsetRose, ratio / 0.22);
-          } else if (ratio < 0.58) {
-            c = colSunsetRose.clone().lerp(colDuskViolet, (ratio - 0.22) / 0.36);
+          if (ratio < 0.32) {
+            c = colHorizon.clone().lerp(colMidSky, ratio / 0.32);
           } else {
-            c = colDuskViolet.clone().lerp(colNightNavy, (ratio - 0.58) / 0.42);
+            c = colMidSky.clone().lerp(colZenith, (ratio - 0.32) / 0.68);
           }
           colors.push(c.r, c.g, c.b);
         }
@@ -698,21 +695,21 @@
         const skyDome = new THREE.Mesh(domeGeo, domeMat);
         scene.add(skyDome);
 
-        // 2. Taburan Bintang-Bintang Senja (Starfield)
-        const starCount = 900;
+        // 2. Taburan 1.200 Bintang Malam Gemerlap (Starfield)
+        const starCount = 1200;
         const starGeo = new THREE.BufferGeometry();
         const starPositions = [];
         const starColors = [];
         const colStarWhite = new THREE.Color(0xffffff);
-        const colStarGold = new THREE.Color(0xffe89e);
-        const colStarCyan = new THREE.Color(0xbfedff);
+        const colStarBlue = new THREE.Color(0xd2edff);
+        const colStarGold = new THREE.Color(0xfff5d0);
 
         for (let i = 0; i < starCount; i++) {
           const u = Math.random();
           const v = Math.random();
           const theta = u * 2.0 * Math.PI;
-          // Disebar di kubah langit di atas cakrawala
-          const phi = Math.acos(0.12 + v * 0.88);
+          // Disebar luas di seluruh kubah langit malam di atas tanah
+          const phi = Math.acos(0.08 + v * 0.92);
           const r = 118 + Math.random() * 5;
 
           const x = r * Math.sin(phi) * Math.cos(theta);
@@ -721,7 +718,7 @@
 
           starPositions.push(x, y, z);
           const pick = Math.random();
-          const c = pick < 0.6 ? colStarWhite : (pick < 0.85 ? colStarGold : colStarCyan);
+          const c = pick < 0.65 ? colStarWhite : (pick < 0.88 ? colStarBlue : colStarGold);
           starColors.push(c.r, c.g, c.b);
         }
 
@@ -729,25 +726,25 @@
         starGeo.setAttribute('color', new THREE.Float32BufferAttribute(starColors, 3));
 
         const starMat = new THREE.PointsMaterial({
-          size: 1.25,
+          size: 1.35,
           vertexColors: true,
           transparent: true,
-          opacity: 0.95
+          opacity: 0.96
         });
         starField = new THREE.Points(starGeo, starMat);
         scene.add(starField);
 
-        // 3. Bulan Sabit Senja Elegan (Crescent Moon)
+        // 3. Rembulan Malam Bercahaya Terang (Moon with Luminous Halo)
         const moonGroup = new THREE.Group();
         const moonMesh = new THREE.Mesh(
-          new THREE.SphereGeometry(3.6, 16, 16),
-          new THREE.MeshBasicMaterial({ color: 0xfff6d4 })
+          new THREE.SphereGeometry(3.8, 20, 20),
+          new THREE.MeshBasicMaterial({ color: 0xf4f8ff })
         );
         moonGroup.add(moonMesh);
 
         const moonGlow = new THREE.Mesh(
-          new THREE.SphereGeometry(4.8, 16, 16),
-          new THREE.MeshBasicMaterial({ color: 0xffe299, transparent: true, opacity: 0.22, depthWrite: false })
+          new THREE.SphereGeometry(5.4, 20, 20),
+          new THREE.MeshBasicMaterial({ color: 0x9bc6ff, transparent: true, opacity: 0.28, depthWrite: false })
         );
         moonGroup.add(moonGlow);
         moonGroup.position.set(-36, 52, -62);
@@ -815,11 +812,11 @@
         waterGeo.computeVertexNormals();
 
         const waterMat = new THREE.MeshStandardMaterial({
-          color: 0x24587c,
+          color: 0x112740,
           transparent: true,
-          opacity: 0.78,
-          roughness: 0.22,
-          metalness: 0.18,
+          opacity: 0.82,
+          roughness: 0.18,
+          metalness: 0.32,
           flatShading: true
         });
         waterMesh = new THREE.Mesh(waterGeo, waterMat);
@@ -828,7 +825,7 @@
 
         // Flowing river streaks
         waterFoamGroup = new THREE.Group();
-        const foamMat = new THREE.MeshBasicMaterial({ color: 0xd8eaf4, transparent: true, opacity: 0.7 });
+        const foamMat = new THREE.MeshBasicMaterial({ color: 0x769ec2, transparent: true, opacity: 0.65 });
         for (let i = 0; i < 36; i++) {
           const fGeo = new THREE.BoxGeometry(0.16, 0.03, 1.4 + Math.random() * 1.8);
           const foam = new THREE.Mesh(fGeo, foamMat);
@@ -840,12 +837,12 @@
         }
         scene.add(waterFoamGroup);
 
-        // Awan dekoratif bersinar hangat terkena cahaya matahari terbenam (dusk tinted)
+        // Awan dekoratif malam hari di bawah terpaan rembulan
         const cloudMat = new THREE.MeshStandardMaterial({
-          color: 0xdf8276,
-          emissive: 0x3d1720,
+          color: 0x182438,
+          emissive: 0x080f1a,
           flatShading: true,
-          roughness: 0.85
+          roughness: 0.92
         });
         for (let i = 0; i < 10; i++) {
           const cloud = new THREE.Group();
