@@ -1,0 +1,2016 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Clean The Junk — Game 3D Aktivis Lingkungan</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: #120c24;
+    }
+    #game-container {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      touch-action: none;
+    }
+    #game-canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      cursor: crosshair;
+    }
+    #damage-flash {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background: radial-gradient(circle, rgba(239,68,68,0.08) 35%, rgba(220,38,38,0.72) 100%);
+      opacity: 0;
+      transition: opacity 0.14s ease-out;
+      z-index: 25;
+    }
+    #damage-flash.active {
+      opacity: 1;
+    }
+    .crosshair {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 18px;
+      height: 18px;
+      pointer-events: none;
+      z-index: 20;
+    }
+    .crosshair::before,
+    .crosshair::after {
+      content: '';
+      position: absolute;
+      background: rgba(255, 255, 255, 0.9);
+      border-radius: 999px;
+      box-shadow: 0 0 4px rgba(0, 0, 0, 0.55);
+      transition: background 0.15s ease, transform 0.15s ease;
+    }
+    .crosshair::before {
+      width: 18px;
+      height: 2.5px;
+      top: 50%;
+      left: 0;
+      transform: translateY(-50%);
+    }
+    .crosshair::after {
+      width: 2.5px;
+      height: 18px;
+      left: 50%;
+      top: 0;
+      transform: translateX(-50%);
+    }
+    .crosshair.target-ready::before,
+    .crosshair.target-ready::after {
+      background: #4ade80;
+      box-shadow: 0 0 10px rgba(74, 222, 128, 0.95);
+    }
+    .glass-panel {
+      background: rgba(15, 29, 22, 0.72);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+    }
+    @keyframes floatUp {
+      0% { opacity: 0; transform: translate(-50%, 8px) scale(0.95); }
+      15% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+      85% { opacity: 1; transform: translate(-50%, -14px) scale(1); }
+      100% { opacity: 0; transform: translate(-50%, -26px) scale(0.96); }
+    }
+    .toast-anim {
+      animation: floatUp 1.7s ease-out forwards;
+    }
+    .heart-lost {
+      opacity: 0.25;
+      filter: grayscale(1);
+      transform: scale(0.85);
+    }
+    .touch-btn {
+      background: rgba(15, 29, 22, 0.7);
+      border: 1.5px solid rgba(255, 255, 255, 0.28);
+      color: #fff;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      touch-action: none;
+    }
+    .touch-btn:active, .touch-btn.pressed {
+      background: rgba(34, 197, 94, 0.78);
+      border-color: #86efac;
+      transform: scale(0.95);
+    }
+  </style>
+</head>
+<body>
+  <div id="game-container">
+    <canvas id="game-canvas"></canvas>
+  </div>
+
+  <!-- Red Damage Flash Overlay -->
+  <div id="damage-flash"></div>
+
+  <!-- Crosshair -->
+  <div id="crosshair" class="crosshair hidden"></div>
+
+  <!-- Top HUD -->
+  <div id="hud" class="fixed inset-x-0 top-0 z-30 p-3 sm:p-4 pointer-events-none hidden">
+    <div class="max-w-6xl mx-auto flex flex-wrap items-start justify-between gap-2">
+      <!-- Left: Lives & Score -->
+      <div class="glass-panel rounded-2xl px-3.5 py-2.5 text-white shadow-xl flex flex-col gap-1.5 min-w-[210px] sm:min-w-[250px]">
+        <div class="flex items-center justify-between gap-3">
+          <div class="flex items-center gap-1.5" id="lives-display" aria-label="Nyawa Pemain">
+            <span class="text-xs font-bold uppercase tracking-wider text-emerald-300 mr-1">Nyawa</span>
+            <span class="heart-icon text-lg transition-all duration-200" data-heart="1">❤️</span>
+            <span class="heart-icon text-lg transition-all duration-200" data-heart="2">❤️</span>
+            <span class="heart-icon text-lg transition-all duration-200" data-heart="3">❤️</span>
+          </div>
+          <div class="text-right">
+            <span class="text-xs font-semibold text-emerald-200/80">Skor</span>
+            <div class="text-base sm:text-lg font-extrabold leading-tight text-amber-300">
+              <span id="score-val">0</span><span class="text-xs font-semibold text-white/70"> / 100</span>
+            </div>
+          </div>
+        </div>
+        <div class="w-full h-2 bg-white/15 rounded-full overflow-hidden">
+          <div id="score-bar" class="h-full bg-gradient-to-r from-emerald-400 to-amber-300 rounded-full transition-all duration-300" style="width: 0%"></div>
+        </div>
+      </div>
+
+      <!-- Right: Trash, Recycling, Snake Timer, Audio -->
+      <div class="flex items-center gap-2 pointer-events-auto">
+        <div class="glass-panel rounded-2xl px-3 py-2 text-white shadow-xl flex items-center gap-3 sm:gap-4 text-xs sm:text-sm">
+          <div class="flex items-center gap-1.5" title="Sampah di Kantong / Total Terkumpul">
+            <span class="text-base">🗑️</span>
+            <div>
+              <div class="text-[10px] uppercase tracking-wider text-white/60 leading-none">Sampah</div>
+              <div class="font-extrabold leading-tight"><span id="trash-val">0</span> <span class="text-[11px] font-semibold text-emerald-300">(Tas: <span id="bag-val">0</span>)</span></div>
+            </div>
+          </div>
+          <div class="w-px h-7 bg-white/15 hidden sm:block"></div>
+          <div class="flex items-center gap-1.5" title="Uang Hasil Daur Ulang">
+            <span class="text-base">♻️</span>
+            <div>
+              <div class="text-[10px] uppercase tracking-wider text-white/60 leading-none">Daur Ulang</div>
+              <div class="font-extrabold text-emerald-300 leading-tight">Rp <span id="money-val">0</span></div>
+            </div>
+          </div>
+          <div class="w-px h-7 bg-white/15 hidden md:block"></div>
+          <div class="hidden md:flex items-center gap-1.5" title="Waktu Kemunculan Ular Baru (Setiap 1 Menit)">
+            <span class="text-base">🐍</span>
+            <div>
+              <div class="text-[10px] uppercase tracking-wider text-white/60 leading-none">Ular (<span id="snake-count">2</span>)</div>
+              <div class="font-bold text-rose-300 leading-tight">+1 dlm <span id="snake-timer">1:00</span></div>
+            </div>
+          </div>
+        </div>
+
+        <button id="mute-btn" type="button" class="glass-panel hover:bg-white/15 active:scale-95 transition rounded-2xl w-11 h-11 flex items-center justify-center text-white text-lg shadow-xl" title="Matikan / Nyalakan Suara">
+          🔊
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mini Radar (Bottom Left on Desktop, Top-below HUD on small) -->
+  <div id="radar-wrap" class="fixed bottom-4 left-4 z-30 pointer-events-none hidden sm:flex flex-col items-center gap-1">
+    <div class="glass-panel rounded-full p-1.5 shadow-xl">
+      <canvas id="radar-canvas" width="116" height="116" class="rounded-full block"></canvas>
+    </div>
+    <div class="text-[10px] font-semibold text-white/80 bg-black/45 px-2 py-0.5 rounded-full">
+      🟢 Sampah &nbsp; 🔴 Ular &nbsp; 🚚 Truk
+    </div>
+  </div>
+
+  <!-- Interaction Prompt -->
+  <div id="interact-prompt" class="fixed bottom-24 sm:bottom-14 left-1/2 -translate-x-1/2 z-30 pointer-events-none hidden">
+    <div class="glass-panel border-emerald-400/60 px-4 py-2 rounded-full text-white font-bold text-sm shadow-2xl flex items-center gap-2">
+      <span class="bg-emerald-500 text-emerald-950 px-2 py-0.5 rounded-md font-black text-xs">E</span>
+      <span id="interact-text">Ambil Sampah</span>
+    </div>
+  </div>
+
+  <!-- Pointer Lock Hint -->
+  <div id="look-hint" class="fixed bottom-4 left-1/2 -translate-x-1/2 z-20 pointer-events-none hidden sm:block">
+    <div class="bg-black/45 text-white/80 text-xs font-medium px-3 py-1 rounded-full backdrop-blur-sm">
+      Klik layar untuk kunci kamera (atau geser mouse) • WASD Jalan • Spasi Lompat • E Ambil/Daur Ulang
+    </div>
+  </div>
+
+  <!-- Floating Feedback Toast Container -->
+  <div id="toast-layer" class="fixed inset-0 pointer-events-none z-40 overflow-hidden"></div>
+
+  <!-- On-Screen Touch / Quick Controls (Visible on touch / narrow screens) -->
+  <div id="touch-controls" class="fixed inset-x-0 bottom-3 z-30 px-3 flex items-end justify-between pointer-events-none sm:hidden hidden">
+    <!-- D-Pad -->
+    <div class="grid grid-cols-3 gap-1.5 w-36 h-36 pointer-events-auto">
+      <div></div>
+      <button type="button" class="touch-btn text-lg" data-key="KeyW">▲</button>
+      <div></div>
+      <button type="button" class="touch-btn text-lg" data-key="KeyA">◀</button>
+      <button type="button" class="touch-btn text-lg" data-key="KeyS">▼</button>
+      <button type="button" class="touch-btn text-lg" data-key="KeyD">▶</button>
+      <div></div>
+      <div></div>
+      <div></div>
+    </div>
+    <!-- Action Buttons -->
+    <div class="flex flex-col gap-2 pointer-events-auto">
+      <button type="button" id="touch-e-btn" class="touch-btn px-4 h-12 text-sm bg-emerald-600/80 border-emerald-300">✋ Ambil [E]</button>
+      <button type="button" id="touch-jump-btn" class="touch-btn px-4 h-12 text-sm bg-amber-500/80 border-amber-200 text-amber-950">⬆ Lompat</button>
+    </div>
+  </div>
+
+  <!-- Start Screen Modal -->
+  <div id="start-screen" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gradient-to-b from-emerald-950/75 via-slate-950/75 to-emerald-950/85 backdrop-blur-sm">
+    <div class="glass-panel max-w-lg w-full rounded-3xl p-6 sm:p-8 text-white shadow-2xl border border-emerald-400/25">
+      <div class="flex items-center justify-between gap-2 mb-3">
+        <span class="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 px-3 py-1 rounded-full">
+          🌿 Gendigital Studio
+        </span>
+        <span class="text-xs font-semibold text-white/60">First-Person 3D</span>
+      </div>
+
+      <h1 class="text-3xl sm:text-4xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-emerald-300 via-lime-200 to-amber-300">
+        Clean The Junk
+      </h1>
+      <p class="mt-2.5 text-sm sm:text-base text-emerald-100/85 leading-relaxed">
+        Kamu adalah aktivis lingkungan di sungai tengah hutan rindang! Bersihkan sampah untuk mencapai <strong class="text-amber-300">100 poin</strong>, tukar di <strong class="text-emerald-300">Truk Daur Ulang</strong> jadi produk &amp; uang, dan hindari gigitan <strong class="text-rose-300">ular</strong>!
+      </p>
+
+      <div class="mt-5 grid grid-cols-2 gap-2.5 text-xs sm:text-sm">
+        <div class="bg-white/5 border border-white/10 rounded-xl p-3 flex items-center gap-2.5">
+          <span class="text-lg">⌨️</span>
+          <div>
+            <div class="font-bold text-white">W A S D</div>
+            <div class="text-white/65 text-xs">Jalan &amp; jelajah sungai</div>
+          </div>
+        </div>
+        <div class="bg-white/5 border border-white/10 rounded-xl p-3 flex items-center gap-2.5">
+          <span class="text-lg">🦘</span>
+          <div>
+            <div class="font-bold text-white">Spasi</div>
+            <div class="text-white/65 text-xs">Lompat hindari ular</div>
+          </div>
+        </div>
+        <div class="bg-white/5 border border-white/10 rounded-xl p-3 flex items-center gap-2.5">
+          <span class="text-lg">✋</span>
+          <div>
+            <div class="font-bold text-white">Tombol E</div>
+            <div class="text-white/65 text-xs">Ambil sampah (+10) &amp; jual</div>
+          </div>
+        </div>
+        <div class="bg-white/5 border border-white/10 rounded-xl p-3 flex items-center gap-2.5">
+          <span class="text-lg">🖱️</span>
+          <div>
+            <div class="font-bold text-white">Mouse / Geser</div>
+            <div class="text-white/65 text-xs">Putar kamera 3D</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-4 flex flex-wrap items-center justify-between gap-2 text-xs text-emerald-200/80 bg-emerald-950/50 rounded-xl px-3.5 py-2.5 border border-emerald-400/15">
+        <span>❤️ Nyawa: <strong>3</strong></span>
+        <span>🎯 Target: <strong>100 Poin</strong></span>
+        <span>🐍 Ular Baru: <strong>Tiap 1 Menit</strong></span>
+      </div>
+
+      <button id="start-btn" type="button" class="mt-6 w-full py-3.5 px-6 rounded-2xl font-extrabold text-base sm:text-lg bg-gradient-to-r from-emerald-400 to-lime-400 hover:from-emerald-300 hover:to-lime-300 text-emerald-950 shadow-lg shadow-emerald-500/25 active:scale-[0.98] transition cursor-pointer">
+        Mulai Bersihkan Sungai!
+      </button>
+    </div>
+  </div>
+
+  <!-- End Screen Modal (Win / Game Over) -->
+  <div id="end-screen" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
+    <div class="glass-panel max-w-md w-full rounded-3xl p-6 sm:p-8 text-center text-white shadow-2xl border border-white/20">
+      <div id="end-emoji" class="text-5xl sm:text-6xl mb-3">🏆</div>
+      <h2 id="end-title" class="text-3xl sm:text-4xl font-black tracking-tight text-amber-300">KAMU MENANG!</h2>
+      <p id="end-subtitle" class="mt-2 text-sm sm:text-base text-white/80">
+        Sungai kembali bersih dan asri berkat aksimu!
+      </p>
+
+      <div class="mt-5 grid grid-cols-2 gap-2.5 text-left">
+        <div class="bg-white/5 border border-white/10 rounded-xl p-3">
+          <div class="text-[11px] uppercase tracking-wider text-white/60">Skor Akhir</div>
+          <div id="end-score" class="text-xl font-black text-amber-300">100 Poin</div>
+        </div>
+        <div class="bg-white/5 border border-white/10 rounded-xl p-3">
+          <div class="text-[11px] uppercase tracking-wider text-white/60">Sampah Dibersihkan</div>
+          <div id="end-trash" class="text-xl font-black text-emerald-300">10 Sampah</div>
+        </div>
+        <div class="bg-white/5 border border-white/10 rounded-xl p-3">
+          <div class="text-[11px] uppercase tracking-wider text-white/60">Produk Daur Ulang</div>
+          <div id="end-recycled" class="text-xl font-black text-sky-300">0 Produk</div>
+        </div>
+        <div class="bg-white/5 border border-white/10 rounded-xl p-3">
+          <div class="text-[11px] uppercase tracking-wider text-white/60">Uang Terkumpul</div>
+          <div id="end-money" class="text-xl font-black text-lime-300">Rp 0</div>
+        </div>
+      </div>
+
+      <button id="restart-btn" type="button" class="mt-6 w-full py-3.5 px-6 rounded-2xl font-extrabold text-base sm:text-lg bg-gradient-to-r from-emerald-400 to-amber-300 hover:from-emerald-300 hover:to-amber-200 text-slate-950 shadow-lg active:scale-[0.98] transition cursor-pointer">
+        Main Lagi
+      </button>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      'use strict';
+
+      // ============================================================
+      // 1. GDD BALANCE PARAMETERS (Tabel Angka Rahasia)
+      // ============================================================
+      const CONFIG = {
+        LIVES: 3,                  // Nyawa Pemain: 3 Nyawa
+        PLAYER_SPEED: 5,           // Kecepatan Lari Pemain: 5
+        JUMP_FORCE: 12,            // Tinggi Lompatan: 12
+        GRAVITY: 26,               // Gravitasi seimbang untuk lompatan 12
+        SNAKE_SPEED: 2.0,          // Kecepatan Rintangan (Ular): 2.0 (diperlambat agar lebih seimbang & seru)
+        SCORE_PER_TRASH: 10,       // Skor per Hadiah: 10 Poin
+        TARGET_SCORE: 100,         // Target Skor Menang: 100 Poin
+        SNAKE_SPAWN_INTERVAL: 60,  // Ular baru muncul setiap 1 menit (60 detik)
+        INITIAL_SNAKES: 2,         // Ular awal di arena agar langsung seru
+        INITIAL_TRASH_COUNT: 14,   // Jumlah sampah tersebar di sungai & tepian
+        MONEY_PER_RECYCLE: 5000,   // Rp 5.000 per sampah didaur ulang
+        WORLD_HALF_X: 24,
+        WORLD_HALF_Z: 30,
+        EYE_HEIGHT: 1.65,
+        PICKUP_RANGE_E: 4.0,
+        AUTO_TOUCH_RANGE: 1.15,
+        TRUCK_INTERACT_RANGE: 5.2,
+        SNAKE_HIT_RANGE: 1.25,
+        INVULN_DURATION: 1.8
+      };
+
+      const RECYCLE_PRODUCTS = [
+        'Tas Eco Daur Ulang',
+        'Pot Tanaman Plastik',
+        'Botol Kaca Baru',
+        'Kerajinan Kaleng Unik',
+        'Kertas Daur Ulang'
+      ];
+
+      // ============================================================
+      // 2. SYNTHESIZED WEB AUDIO ENGINE (Bonus Tantangan GDD)
+      // ============================================================
+      const AudioFX = {
+        ctx: null,
+        muted: false,
+        init() {
+          if (!this.ctx) {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (AudioCtx) this.ctx = new AudioCtx();
+          }
+          if (this.ctx && this.ctx.state === 'suspended') {
+            this.ctx.resume().catch(() => {});
+          }
+        },
+        toggleMute() {
+          this.muted = !this.muted;
+          return this.muted;
+        },
+        playTone(freqStart, freqEnd, duration, type, gainVal, delay = 0) {
+          if (this.muted || !this.ctx) return;
+          const now = this.ctx.currentTime + delay;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = type || 'sine';
+          osc.frequency.setValueAtTime(freqStart, now);
+          if (freqEnd && freqEnd !== freqStart) {
+            osc.frequency.exponentialRampToValueAtTime(Math.max(20, freqEnd), now + duration);
+          }
+          gain.gain.setValueAtTime(0.0001, now);
+          gain.gain.linearRampToValueAtTime(gainVal, now + 0.015);
+          gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + duration + 0.02);
+        },
+        jump() {
+          // Efek suara kartun 'boing' pegas elastis saat melompat
+          if (this.muted || !this.ctx) return;
+          const now = this.ctx.currentTime;
+
+          try {
+            // Osilator utama pegas (carrier)
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+
+            // LFO pemodulasi frekuensi untuk getaran pegas khas kartun 'boing'
+            const modOsc = this.ctx.createOscillator();
+            const modGain = this.ctx.createGain();
+
+            modOsc.type = 'sine';
+            modOsc.frequency.setValueAtTime(26, now); // Getaran cepat 26 Hz
+            modOsc.frequency.exponentialRampToValueAtTime(14, now + 0.38);
+
+            modGain.gain.setValueAtTime(65, now);
+            modGain.gain.exponentialRampToValueAtTime(1.5, now + 0.38);
+
+            modOsc.connect(osc.frequency);
+
+            // Lengkungan nada boing: melesat naik dari rendah lalu beresonansi turun
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(155, now);
+            osc.frequency.exponentialRampToValueAtTime(540, now + 0.12);
+            osc.frequency.exponentialRampToValueAtTime(310, now + 0.38);
+
+            gain.gain.setValueAtTime(0.001, now);
+            gain.gain.linearRampToValueAtTime(0.28, now + 0.02);
+            gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.4);
+
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+
+            // Lapisan harmonik kedua (triangle) agar suara lebih berbobot & 'twang' kartun
+            const harmOsc = this.ctx.createOscillator();
+            const harmGain = this.ctx.createGain();
+            harmOsc.type = 'triangle';
+            harmOsc.frequency.setValueAtTime(310, now);
+            harmOsc.frequency.exponentialRampToValueAtTime(860, now + 0.1);
+            harmOsc.frequency.exponentialRampToValueAtTime(460, now + 0.32);
+
+            harmGain.gain.setValueAtTime(0.001, now);
+            harmGain.gain.linearRampToValueAtTime(0.12, now + 0.02);
+            harmGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.32);
+
+            harmOsc.connect(harmGain);
+            harmGain.connect(this.ctx.destination);
+
+            modOsc.start(now);
+            osc.start(now);
+            harmOsc.start(now);
+
+            modOsc.stop(now + 0.42);
+            osc.stop(now + 0.42);
+            harmOsc.stop(now + 0.35);
+          } catch (e) {
+            // Fallback nada ceria sederhana jika WebAudio LFO dibatasi
+            this.playTone(220, 580, 0.22, 'triangle', 0.18, 0);
+          }
+        },
+        ting() {
+          // Bunyi 'ting!' ceria saat ambil sampah
+          this.playTone(1046.5, 1318.5, 0.18, 'sine', 0.2, 0);
+          this.playTone(1567.98, 1567.98, 0.28, 'triangle', 0.14, 0.06);
+        },
+        recycle() {
+          // Bunyi koin / kasir saat menukar sampah jadi produk daur ulang
+          this.playTone(587.33, 587.33, 0.1, 'triangle', 0.16, 0);
+          this.playTone(783.99, 783.99, 0.12, 'triangle', 0.16, 0.08);
+          this.playTone(1046.5, 1046.5, 0.25, 'sine', 0.18, 0.16);
+        },
+        bite() {
+          // Efek suara saat bertemu / digigit ular
+          this.playTone(220, 75, 0.28, 'sawtooth', 0.22, 0);
+          this.playTone(150, 55, 0.32, 'square', 0.12, 0.05);
+        },
+        snakeSpawn() {
+          this.playTone(340, 220, 0.25, 'sawtooth', 0.1, 0);
+          this.playTone(280, 180, 0.3, 'sawtooth', 0.1, 0.15);
+        },
+        win() {
+          const notes = [523.25, 659.25, 783.99, 1046.5];
+          notes.forEach((n, i) => this.playTone(n, n, 0.28, 'triangle', 0.18, i * 0.11));
+        },
+        gameOver() {
+          const notes = [392.0, 349.23, 311.13, 261.63];
+          notes.forEach((n, i) => this.playTone(n, n * 0.96, 0.28, 'sawtooth', 0.13, i * 0.15));
+        }
+      };
+
+      // ============================================================
+      // 3. GAME STATE
+      // ============================================================
+      const state = {
+        phase: 'start', // 'start' | 'playing' | 'win' | 'gameover'
+        lives: CONFIG.LIVES,
+        score: 0,
+        trashCollected: 0,
+        bagTrash: 0,
+        recycledCount: 0,
+        money: 0,
+        snakeSpawnCountdown: CONFIG.SNAKE_SPAWN_INTERVAL,
+        invulnTimer: 0,
+        damageFlashTimer: 0,
+        shakeTimer: 0,
+        grabAnimTimer: 0,
+        walkCycle: 0,
+        pointerLocked: false,
+        isDraggingLook: false,
+        lastPointerX: 0,
+        lastPointerY: 0,
+        yaw: 0,
+        pitch: -0.08,
+        playerPos: new THREE.Vector3(0, 0, 16),
+        playerVelY: 0,
+        onGround: true,
+        keys: {},
+        nearestTrash: null,
+        nearTruck: false,
+        animFrameId: null
+      };
+
+      // ============================================================
+      // 4. DOM REFERENCES
+      // ============================================================
+      const dom = {
+        container: document.getElementById('game-container'),
+        canvas: document.getElementById('game-canvas'),
+        damageFlash: document.getElementById('damage-flash'),
+        crosshair: document.getElementById('crosshair'),
+        hud: document.getElementById('hud'),
+        radarWrap: document.getElementById('radar-wrap'),
+        radarCanvas: document.getElementById('radar-canvas'),
+        interactPrompt: document.getElementById('interact-prompt'),
+        interactText: document.getElementById('interact-text'),
+        lookHint: document.getElementById('look-hint'),
+        toastLayer: document.getElementById('toast-layer'),
+        touchControls: document.getElementById('touch-controls'),
+        touchEBtn: document.getElementById('touch-e-btn'),
+        touchJumpBtn: document.getElementById('touch-jump-btn'),
+        startScreen: document.getElementById('start-screen'),
+        startBtn: document.getElementById('start-btn'),
+        endScreen: document.getElementById('end-screen'),
+        endEmoji: document.getElementById('end-emoji'),
+        endTitle: document.getElementById('end-title'),
+        endSubtitle: document.getElementById('end-subtitle'),
+        endScore: document.getElementById('end-score'),
+        endTrash: document.getElementById('end-trash'),
+        endRecycled: document.getElementById('end-recycled'),
+        endMoney: document.getElementById('end-money'),
+        restartBtn: document.getElementById('restart-btn'),
+        scoreVal: document.getElementById('score-val'),
+        scoreBar: document.getElementById('score-bar'),
+        trashVal: document.getElementById('trash-val'),
+        bagVal: document.getElementById('bag-val'),
+        moneyVal: document.getElementById('money-val'),
+        snakeCount: document.getElementById('snake-count'),
+        snakeTimer: document.getElementById('snake-timer'),
+        muteBtn: document.getElementById('mute-btn'),
+        hearts: Array.from(document.querySelectorAll('.heart-icon'))
+      };
+
+      // ============================================================
+      // 5. THREE.JS SCENE SETUP (Low-Poly Forest River World)
+      // ============================================================
+      let scene, camera, renderer, clock;
+      let waterMesh, waterFoamGroup, firstPersonRig, leftBagMesh, rightHandGroup, starField;
+      let truckPos = new THREE.Vector3(-12.5, 0, 12);
+      let truckDropRing;
+      const obstacles = []; // { x, z, radius, height, canStandOn }
+      const trashItems = [];
+      const snakes = [];
+      const particles = [];
+
+      function getRiverCenterX(z) {
+        return Math.sin(z * 0.085) * 4.2;
+      }
+
+      function getRiverHalfWidth(z) {
+        return 6.2 + Math.cos(z * 0.11) * 1.1;
+      }
+
+      function getGroundHeight(x, z) {
+        const rc = getRiverCenterX(z);
+        const rw = getRiverHalfWidth(z);
+        const dist = Math.abs(x - rc);
+        if (dist < rw - 1.2) {
+          return -0.22; // Shallow walkable riverbed
+        }
+        if (dist < rw + 1.4) {
+          const t = (dist - (rw - 1.2)) / 2.6;
+          return -0.22 + t * 0.42; // Gentle sandy bank slope
+        }
+        // Lush forest bank with subtle gentle undulation
+        return 0.2 + Math.sin(x * 0.16) * Math.cos(z * 0.14) * 0.22;
+      }
+
+      function initThree() {
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x150f28);
+        scene.fog = new THREE.FogExp2(0x2c1a3b, 0.012);
+
+        camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.1, 260);
+        camera.rotation.order = 'YXZ';
+        scene.add(camera);
+
+        renderer = new THREE.WebGLRenderer({ canvas: dom.canvas, antialias: true, powerPreference: 'high-performance' });
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        resizeRenderer();
+
+        clock = new THREE.Clock();
+
+        // Lights: Nuansa senja dramatis (Cahaya matahari terbenam oranye hangat + pantulan langit violet senja)
+        const hemiLight = new THREE.HemisphereLight(0x8a5e98, 0x223526, 0.9);
+        scene.add(hemiLight);
+
+        const dirLight = new THREE.DirectionalLight(0xff9459, 1.15);
+        dirLight.position.set(30, 20, 22);
+        dirLight.castShadow = true;
+        dirLight.shadow.mapSize.width = 1024;
+        dirLight.shadow.mapSize.height = 1024;
+        dirLight.shadow.camera.near = 5;
+        dirLight.shadow.camera.far = 100;
+        dirLight.shadow.camera.left = -38;
+        dirLight.shadow.camera.right = 38;
+        dirLight.shadow.camera.top = 38;
+        dirLight.shadow.camera.bottom = -38;
+        scene.add(dirLight);
+
+        buildSkyDomeAndStars();
+        buildTerrainAndRiver();
+        buildForestScenery();
+        buildRecyclingTruck();
+        buildFirstPersonHands();
+      }
+
+      function resizeRenderer() {
+        if (!renderer || !camera) return;
+        const w = dom.container.clientWidth || window.innerWidth;
+        const h = dom.container.clientHeight || window.innerHeight;
+        camera.aspect = w / Math.max(1, h);
+        camera.updateProjectionMatrix();
+        renderer.setSize(w, h, false);
+      }
+
+      function buildSkyDomeAndStars() {
+        // 1. Kubah Langit Senja Gradasi (Horizon oranye keemasan -> Ungu kemerahan -> Biru dongker malam)
+        const domeGeo = new THREE.SphereGeometry(125, 36, 26, 0, Math.PI * 2, 0, Math.PI * 0.5);
+        const pos = domeGeo.attributes.position;
+        const colors = [];
+
+        const colHorizon = new THREE.Color(0xf07b3b);    // Oranye keemasan senja di garis cakrawala
+        const colSunsetRose = new THREE.Color(0xb53c69);  // Ungu kemerahan senja (sunset rose)
+        const colDuskViolet = new THREE.Color(0x4b2360);  // Violet senja pekat
+        const colNightNavy = new THREE.Color(0x0e0d29);   // Biru dongker gelap langit malam di kubah atas
+
+        for (let i = 0; i < pos.count; i++) {
+          const y = pos.getY(i);
+          const ratio = Math.max(0, Math.min(1, y / 125)); // 0 di cakrawala, 1 di puncak langit
+          let c;
+          if (ratio < 0.22) {
+            c = colHorizon.clone().lerp(colSunsetRose, ratio / 0.22);
+          } else if (ratio < 0.58) {
+            c = colSunsetRose.clone().lerp(colDuskViolet, (ratio - 0.22) / 0.36);
+          } else {
+            c = colDuskViolet.clone().lerp(colNightNavy, (ratio - 0.58) / 0.42);
+          }
+          colors.push(c.r, c.g, c.b);
+        }
+        domeGeo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+        const domeMat = new THREE.MeshBasicMaterial({
+          vertexColors: true,
+          side: THREE.BackSide,
+          depthWrite: false
+        });
+        const skyDome = new THREE.Mesh(domeGeo, domeMat);
+        scene.add(skyDome);
+
+        // 2. Taburan Bintang-Bintang Senja (Starfield)
+        const starCount = 900;
+        const starGeo = new THREE.BufferGeometry();
+        const starPositions = [];
+        const starColors = [];
+        const colStarWhite = new THREE.Color(0xffffff);
+        const colStarGold = new THREE.Color(0xffe89e);
+        const colStarCyan = new THREE.Color(0xbfedff);
+
+        for (let i = 0; i < starCount; i++) {
+          const u = Math.random();
+          const v = Math.random();
+          const theta = u * 2.0 * Math.PI;
+          // Disebar di kubah langit di atas cakrawala
+          const phi = Math.acos(0.12 + v * 0.88);
+          const r = 118 + Math.random() * 5;
+
+          const x = r * Math.sin(phi) * Math.cos(theta);
+          const y = r * Math.cos(phi);
+          const z = r * Math.sin(phi) * Math.sin(theta);
+
+          starPositions.push(x, y, z);
+          const pick = Math.random();
+          const c = pick < 0.6 ? colStarWhite : (pick < 0.85 ? colStarGold : colStarCyan);
+          starColors.push(c.r, c.g, c.b);
+        }
+
+        starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starPositions, 3));
+        starGeo.setAttribute('color', new THREE.Float32BufferAttribute(starColors, 3));
+
+        const starMat = new THREE.PointsMaterial({
+          size: 1.25,
+          vertexColors: true,
+          transparent: true,
+          opacity: 0.95
+        });
+        starField = new THREE.Points(starGeo, starMat);
+        scene.add(starField);
+
+        // 3. Bulan Sabit Senja Elegan (Crescent Moon)
+        const moonGroup = new THREE.Group();
+        const moonMesh = new THREE.Mesh(
+          new THREE.SphereGeometry(3.6, 16, 16),
+          new THREE.MeshBasicMaterial({ color: 0xfff6d4 })
+        );
+        moonGroup.add(moonMesh);
+
+        const moonGlow = new THREE.Mesh(
+          new THREE.SphereGeometry(4.8, 16, 16),
+          new THREE.MeshBasicMaterial({ color: 0xffe299, transparent: true, opacity: 0.22, depthWrite: false })
+        );
+        moonGroup.add(moonGlow);
+        moonGroup.position.set(-36, 52, -62);
+        scene.add(moonGroup);
+      }
+
+      function buildTerrainAndRiver() {
+        // Low-poly sculpted terrain plane with vertex colors (sand, grass, riverbed)
+        const width = 76;
+        const depth = 84;
+        const segX = 48;
+        const segZ = 54;
+        const geo = new THREE.PlaneGeometry(width, depth, segX, segZ);
+        geo.rotateX(-Math.PI / 2);
+
+        const pos = geo.attributes.position;
+        const colors = [];
+        const colorBed = new THREE.Color(0x6c9a9e);
+        const colorSand = new THREE.Color(0xe6d59e);
+        const colorGrass1 = new THREE.Color(0x5ea348);
+        const colorGrass2 = new THREE.Color(0x4b8b3b);
+
+        for (let i = 0; i < pos.count; i++) {
+          const x = pos.getX(i);
+          const z = pos.getZ(i);
+          const y = getGroundHeight(x, z);
+          pos.setY(i, y);
+
+          const rc = getRiverCenterX(z);
+          const rw = getRiverHalfWidth(z);
+          const dist = Math.abs(x - rc);
+
+          let c;
+          if (dist < rw - 0.8) {
+            c = colorBed;
+          } else if (dist < rw + 1.5) {
+            c = colorSand;
+          } else {
+            c = ((Math.floor(x) + Math.floor(z)) % 2 === 0) ? colorGrass1 : colorGrass2;
+          }
+          colors.push(c.r, c.g, c.b);
+        }
+        geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+        geo.computeVertexNormals();
+
+        const terrainMat = new THREE.MeshStandardMaterial({
+          vertexColors: true,
+          roughness: 0.92,
+          metalness: 0.02,
+          flatShading: true
+        });
+        const terrain = new THREE.Mesh(geo, terrainMat);
+        terrain.receiveShadow = true;
+        scene.add(terrain);
+
+        // Animated translucent low-poly water surface (Mencerminkan warna langit senja)
+        const waterGeo = new THREE.PlaneGeometry(24, depth, 14, 42);
+        waterGeo.rotateX(-Math.PI / 2);
+        const wPos = waterGeo.attributes.position;
+        for (let i = 0; i < wPos.count; i++) {
+          const localX = wPos.getX(i);
+          const z = wPos.getZ(i);
+          wPos.setX(i, localX + getRiverCenterX(z));
+        }
+        waterGeo.computeVertexNormals();
+
+        const waterMat = new THREE.MeshStandardMaterial({
+          color: 0x24587c,
+          transparent: true,
+          opacity: 0.78,
+          roughness: 0.22,
+          metalness: 0.18,
+          flatShading: true
+        });
+        waterMesh = new THREE.Mesh(waterGeo, waterMat);
+        waterMesh.position.y = 0.02;
+        scene.add(waterMesh);
+
+        // Flowing river streaks
+        waterFoamGroup = new THREE.Group();
+        const foamMat = new THREE.MeshBasicMaterial({ color: 0xd8eaf4, transparent: true, opacity: 0.7 });
+        for (let i = 0; i < 36; i++) {
+          const fGeo = new THREE.BoxGeometry(0.16, 0.03, 1.4 + Math.random() * 1.8);
+          const foam = new THREE.Mesh(fGeo, foamMat);
+          const z = (Math.random() - 0.5) * 64;
+          const offset = (Math.random() - 0.5) * 8.5;
+          foam.position.set(getRiverCenterX(z) + offset, 0.05, z);
+          foam.userData = { offset, speed: 2.2 + Math.random() * 1.5 };
+          waterFoamGroup.add(foam);
+        }
+        scene.add(waterFoamGroup);
+
+        // Awan dekoratif bersinar hangat terkena cahaya matahari terbenam (dusk tinted)
+        const cloudMat = new THREE.MeshStandardMaterial({
+          color: 0xdf8276,
+          emissive: 0x3d1720,
+          flatShading: true,
+          roughness: 0.85
+        });
+        for (let i = 0; i < 10; i++) {
+          const cloud = new THREE.Group();
+          for (let b = 0; b < 3; b++) {
+            const puff = new THREE.Mesh(new THREE.DodecahedronGeometry(2.2 + Math.random() * 1.2, 0), cloudMat);
+            puff.position.set(b * 2.1 - 2, Math.random() * 0.7, (Math.random() - 0.5) * 1.2);
+            cloud.add(puff);
+          }
+          cloud.position.set((Math.random() - 0.5) * 80, 22 + Math.random() * 8, (Math.random() - 0.5) * 80);
+          scene.add(cloud);
+        }
+      }
+
+      function createLowPolyTree(x, z, scale) {
+        const group = new THREE.Group();
+        const trunkMat = new THREE.MeshStandardMaterial({ color: 0x6b4423, flatShading: true, roughness: 0.95 });
+        const leafColors = [0x2d6a32, 0x3b843b, 0x4e9a3f, 0x255a2c];
+        const leafMat = new THREE.MeshStandardMaterial({
+          color: leafColors[Math.floor(Math.random() * leafColors.length)],
+          flatShading: true,
+          roughness: 0.85
+        });
+
+        const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.28 * scale, 0.45 * scale, 2.6 * scale, 6), trunkMat);
+        trunk.position.y = 1.3 * scale;
+        trunk.castShadow = true;
+        trunk.receiveShadow = true;
+        group.add(trunk);
+
+        // Layered pine / forest foliage
+        const cone1 = new THREE.Mesh(new THREE.ConeGeometry(1.9 * scale, 2.7 * scale, 6), leafMat);
+        cone1.position.y = 3.2 * scale;
+        cone1.castShadow = true;
+        group.add(cone1);
+
+        const cone2 = new THREE.Mesh(new THREE.ConeGeometry(1.45 * scale, 2.3 * scale, 6), leafMat);
+        cone2.position.y = 4.55 * scale;
+        cone2.castShadow = true;
+        group.add(cone2);
+
+        const cone3 = new THREE.Mesh(new THREE.ConeGeometry(0.95 * scale, 1.8 * scale, 6), leafMat);
+        cone3.position.y = 5.7 * scale;
+        cone3.castShadow = true;
+        group.add(cone3);
+
+        group.position.set(x, getGroundHeight(x, z) - 0.1, z);
+        scene.add(group);
+        obstacles.push({ x, z, radius: 0.65 * scale, height: 4.0, canStandOn: false });
+      }
+
+      function createRock(x, z, scale, inRiver) {
+        const rockMat = new THREE.MeshStandardMaterial({
+          color: inRiver ? 0x7c8b95 : 0x878d91,
+          flatShading: true,
+          roughness: 0.9
+        });
+        const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(scale, 0), rockMat);
+        rock.scale.set(1.25, 0.68, 1.05);
+        const gy = getGroundHeight(x, z);
+        rock.position.set(x, gy + scale * 0.35, z);
+        rock.rotation.set(Math.random() * 0.4, Math.random() * Math.PI, Math.random() * 0.4);
+        rock.castShadow = true;
+        rock.receiveShadow = true;
+        scene.add(rock);
+
+        if (inRiver) {
+          // Foam ring around river boulder
+          const ring = new THREE.Mesh(
+            new THREE.RingGeometry(scale * 1.05, scale * 1.32, 10),
+            new THREE.MeshBasicMaterial({ color: 0xdff7ff, side: THREE.DoubleSide, transparent: true, opacity: 0.65 })
+          );
+          ring.rotation.x = -Math.PI / 2;
+          ring.position.set(x, 0.04, z);
+          scene.add(ring);
+        }
+
+        obstacles.push({ x, z, radius: scale * 1.05, height: gy + scale * 0.95, canStandOn: true });
+      }
+
+      function buildForestScenery() {
+        // Wooden footbridge crossing the river near z = 0
+        const bridgeZ = 0;
+        const bridgeX = getRiverCenterX(bridgeZ);
+        const bridgeGroup = new THREE.Group();
+        const woodMat = new THREE.MeshStandardMaterial({ color: 0x9c6b3b, flatShading: true, roughness: 0.9 });
+        const postMat = new THREE.MeshStandardMaterial({ color: 0x6f4724, flatShading: true, roughness: 0.95 });
+
+        for (let i = -7; i <= 7; i++) {
+          const plank = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.16, 3.0), woodMat);
+          const archY = 0.55 + Math.cos((i / 7) * (Math.PI / 2)) * 0.45;
+          plank.position.set(i * 1.12, archY, 0);
+          plank.castShadow = true;
+          plank.receiveShadow = true;
+          bridgeGroup.add(plank);
+        }
+        [-1.35, 1.35].forEach((rz) => {
+          const rail = new THREE.Mesh(new THREE.BoxGeometry(16.2, 0.14, 0.14), postMat);
+          rail.position.set(0, 1.55, rz);
+          bridgeGroup.add(rail);
+          for (let p = -7; p <= 7; p += 3.5) {
+            const post = new THREE.Mesh(new THREE.BoxGeometry(0.18, 1.3, 0.18), postMat);
+            post.position.set(p, 1.0, rz);
+            bridgeGroup.add(post);
+          }
+        });
+        bridgeGroup.position.set(bridgeX, 0, bridgeZ);
+        scene.add(bridgeGroup);
+
+        // Low-poly rocks inside the river & along banks (jumpable stepping stones!)
+        const riverRocks = [
+          [-1.5, 9, 1.15], [2.4, 6, 0.95], [-2.8, -8, 1.2], [1.9, -14, 1.1],
+          [-0.8, -21, 1.05], [3.5, 18, 0.95], [-3.2, 22, 1.15]
+        ];
+        riverRocks.forEach(([ox, z, s]) => {
+          createRock(getRiverCenterX(z) + ox, z, s, true);
+        });
+
+        // Forest trees lining both banks (keeping clear of recycling truck & spawn)
+        for (let z = -34; z <= 34; z += 4.6) {
+          const rc = getRiverCenterX(z);
+          const rw = getRiverHalfWidth(z);
+          // Left bank trees
+          for (let layer = 0; layer < 3; layer++) {
+            const tx = rc - rw - 3.6 - layer * 5.2 + (Math.random() - 0.5) * 2.2;
+            const tz = z + (Math.random() - 0.5) * 2.6;
+            if (Math.hypot(tx - truckPos.x, tz - truckPos.z) > 7.5) {
+              createLowPolyTree(tx, tz, 0.9 + Math.random() * 0.55);
+            }
+          }
+          // Right bank trees
+          for (let layer = 0; layer < 3; layer++) {
+            const tx = rc + rw + 3.6 + layer * 5.2 + (Math.random() - 0.5) * 2.2;
+            const tz = z + (Math.random() - 0.5) * 2.6;
+            createLowPolyTree(tx, tz, 0.9 + Math.random() * 0.55);
+          }
+        }
+
+        // Bushes & wildflowers along the banks
+        const bushMat = new THREE.MeshStandardMaterial({ color: 0x3e8e41, flatShading: true, roughness: 0.9 });
+        const flowerColors = [0xfde047, 0xf472b6, 0xfb923c, 0xffffff];
+        for (let i = 0; i < 40; i++) {
+          const z = (Math.random() - 0.5) * 58;
+          const side = Math.random() < 0.5 ? -1 : 1;
+          const x = getRiverCenterX(z) + side * (getRiverHalfWidth(z) + 2.2 + Math.random() * 9);
+          if (Math.hypot(x - truckPos.x, z - truckPos.z) < 6.5) continue;
+          const gy = getGroundHeight(x, z);
+          const bush = new THREE.Mesh(new THREE.DodecahedronGeometry(0.55 + Math.random() * 0.4, 0), bushMat);
+          bush.position.set(x, gy + 0.35, z);
+          bush.castShadow = true;
+          scene.add(bush);
+
+          if (Math.random() < 0.5) {
+            const fMat = new THREE.MeshStandardMaterial({
+              color: flowerColors[Math.floor(Math.random() * flowerColors.length)],
+              flatShading: true
+            });
+            const flower = new THREE.Mesh(new THREE.OctahedronGeometry(0.16, 0), fMat);
+            flower.position.set(x + 0.4, gy + 0.55, z + 0.25);
+            scene.add(flower);
+          }
+        }
+      }
+
+      function buildRecyclingTruck() {
+        // Green Garbage / Recycling Truck inspired by Contoh B in the GDD!
+        const truck = new THREE.Group();
+        const gy = getGroundHeight(truckPos.x, truckPos.z);
+
+        const greenMat = new THREE.MeshStandardMaterial({ color: 0x16a34a, flatShading: true, roughness: 0.55 });
+        const darkGreenMat = new THREE.MeshStandardMaterial({ color: 0x15803d, flatShading: true, roughness: 0.6 });
+        const darkMetal = new THREE.MeshStandardMaterial({ color: 0x1f2937, flatShading: true, roughness: 0.7 });
+        const glassMat = new THREE.MeshStandardMaterial({ color: 0x7dd3fc, flatShading: true, roughness: 0.2, metalness: 0.3 });
+        const yellowMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, flatShading: true, roughness: 0.4 });
+        const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111827, flatShading: true, roughness: 0.9 });
+
+        // Main rear compactor body
+        const body = new THREE.Mesh(new THREE.BoxGeometry(3.2, 2.7, 4.4), greenMat);
+        body.position.set(0, 1.95, -0.5);
+        body.castShadow = true;
+        body.receiveShadow = true;
+        truck.add(body);
+
+        // Open rear hopper cavity (dark interior with colorful recycled bags inside)
+        const hopper = new THREE.Mesh(new THREE.BoxGeometry(2.6, 1.9, 1.2), darkMetal);
+        hopper.position.set(0, 1.65, 1.55);
+        truck.add(hopper);
+
+        // Front cabin
+        const cab = new THREE.Mesh(new THREE.BoxGeometry(2.9, 2.2, 2.1), darkGreenMat);
+        cab.position.set(0, 1.7, -3.65);
+        cab.castShadow = true;
+        truck.add(cab);
+
+        // Windshield
+        const windshield = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.95, 0.12), glassMat);
+        windshield.position.set(0, 2.1, -4.72);
+        truck.add(windshield);
+
+        // Warning bumper stripes
+        const bumper = new THREE.Mesh(new THREE.BoxGeometry(3.3, 0.35, 0.35), yellowMat);
+        bumper.position.set(0, 0.65, 2.15);
+        truck.add(bumper);
+
+        // 4 Wheels
+        const wheelGeo = new THREE.CylinderGeometry(0.58, 0.58, 0.45, 10);
+        wheelGeo.rotateZ(Math.PI / 2);
+        [[-1.6, 0.58, 1.0], [1.6, 0.58, 1.0], [-1.6, 0.58, -3.2], [1.6, 0.58, -3.2]].forEach(([wx, wy, wz]) => {
+          const wheel = new THREE.Mesh(wheelGeo, wheelMat);
+          wheel.position.set(wx, wy, wz);
+          wheel.castShadow = true;
+          truck.add(wheel);
+        });
+
+        // Floating Recycle Sign above truck
+        const signPost = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.75, 0.18), yellowMat);
+        signPost.position.set(0, 3.85, 1.2);
+        truck.add(signPost);
+
+        truck.position.set(truckPos.x, gy, truckPos.z);
+        truck.rotation.y = Math.PI * 0.28; // Angled nicely facing the river
+        scene.add(truck);
+
+        // Glowing drop-off ring in front of the truck's rear hopper
+        const dropOffset = new THREE.Vector3(0, 0, 3.3).applyAxisAngle(new THREE.Vector3(0, 1, 0), truck.rotation.y);
+        truckPos.x += dropOffset.x * 0.4;
+        truckPos.z += dropOffset.z * 0.4;
+
+        truckDropRing = new THREE.Mesh(
+          new THREE.RingGeometry(1.7, 2.15, 24),
+          new THREE.MeshBasicMaterial({ color: 0x4ade80, side: THREE.DoubleSide, transparent: true, opacity: 0.75 })
+        );
+        truckDropRing.rotation.x = -Math.PI / 2;
+        truckDropRing.position.set(truck.position.x + dropOffset.x, gy + 0.14, truck.position.z + dropOffset.z);
+        scene.add(truckDropRing);
+
+        // Store actual interact point at drop ring
+        truckPos.set(truck.position.x + dropOffset.x, gy, truck.position.z + dropOffset.z);
+
+        obstacles.push({ x: truck.position.x, z: truck.position.z, radius: 2.8, height: 3.5, canStandOn: false });
+      }
+
+      function buildFirstPersonHands() {
+        // First-person stylized arms + black trash bag in left hand (inspired by Contoh B!)
+        firstPersonRig = new THREE.Group();
+
+        const skinMat = new THREE.MeshStandardMaterial({ color: 0xf1c27d, flatShading: true, roughness: 0.7 });
+        const sleeveMat = new THREE.MeshStandardMaterial({ color: 0x16a34a, flatShading: true, roughness: 0.8 });
+        const bagMat = new THREE.MeshStandardMaterial({ color: 0x18181b, flatShading: true, roughness: 0.35, metalness: 0.15 });
+
+        // Left arm + trash bag
+        const leftGroup = new THREE.Group();
+        const lArm = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 0.45), sleeveMat);
+        lArm.position.set(0, 0, 0.12);
+        leftGroup.add(lArm);
+        const lHand = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.15, 0.18), skinMat);
+        lHand.position.set(0, 0, -0.16);
+        leftGroup.add(lHand);
+
+        leftBagMesh = new THREE.Group();
+        const bagBody = new THREE.Mesh(new THREE.DodecahedronGeometry(0.24, 0), bagMat);
+        bagBody.scale.set(0.95, 1.15, 0.9);
+        bagBody.position.set(0, -0.22, -0.02);
+        leftBagMesh.add(bagBody);
+        const bagKnot = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.14, 5), bagMat);
+        bagKnot.position.set(0, 0.04, -0.02);
+        leftBagMesh.add(bagKnot);
+        leftBagMesh.position.set(0.02, -0.02, -0.2);
+        leftBagMesh.visible = false; // Appears as soon as player holds trash!
+        leftGroup.add(leftBagMesh);
+
+        leftGroup.position.set(-0.46, -0.36, -0.58);
+        leftGroup.rotation.set(0.12, 0.25, -0.08);
+        firstPersonRig.add(leftGroup);
+
+        // Right arm (grabbing hand)
+        rightHandGroup = new THREE.Group();
+        const rArm = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 0.45), sleeveMat);
+        rArm.position.set(0, 0, 0.12);
+        rightHandGroup.add(rArm);
+        const rHand = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.15, 0.18), skinMat);
+        rHand.position.set(0, 0, -0.16);
+        rightHandGroup.add(rHand);
+        rightHandGroup.position.set(0.46, -0.36, -0.58);
+        rightHandGroup.rotation.set(0.12, -0.25, 0.08);
+        firstPersonRig.add(rightHandGroup);
+
+        camera.add(firstPersonRig);
+      }
+
+      // ============================================================
+      // 6. TRASH (SAMPAH) & SNAKES (ULAR) FACTORIES
+      // ============================================================
+      const TRASH_TYPES = [
+        { name: 'Botol Plastik', color: 0x38bdf8, shape: 'bottle' },
+        { name: 'Kaleng Bekas', color: 0xef4444, shape: 'can' },
+        { name: 'Kantong Plastik', color: 0x1e293b, shape: 'bag' },
+        { name: 'Kardus Bekas', color: 0xd97706, shape: 'box' },
+        { name: 'Botol Hijau', color: 0x22c55e, shape: 'bottle' }
+      ];
+
+      function spawnOneTrash() {
+        const type = TRASH_TYPES[Math.floor(Math.random() * TRASH_TYPES.length)];
+        const group = new THREE.Group();
+        const mat = new THREE.MeshStandardMaterial({ color: type.color, flatShading: true, roughness: 0.45 });
+
+        let mesh;
+        if (type.shape === 'bottle') {
+          mesh = new THREE.Group();
+          const b = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.18, 0.52, 7), mat);
+          b.position.y = 0.26;
+          const cap = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.08, 0.08, 0.12, 6),
+            new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true })
+          );
+          cap.position.y = 0.56;
+          mesh.add(b, cap);
+        } else if (type.shape === 'can') {
+          mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.36, 8), mat);
+          mesh.position.y = 0.22;
+          mesh.rotation.z = 0.35;
+        } else if (type.shape === 'bag') {
+          mesh = new THREE.Mesh(new THREE.DodecahedronGeometry(0.32, 0), mat);
+          mesh.scale.set(1, 0.85, 1);
+          mesh.position.y = 0.3;
+        } else {
+          mesh = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.36, 0.42), mat);
+          mesh.position.y = 0.24;
+        }
+        group.add(mesh);
+
+        // Glowing highlight ring so kids can spot trash cleanly
+        const glowRing = new THREE.Mesh(
+          new THREE.RingGeometry(0.42, 0.58, 16),
+          new THREE.MeshBasicMaterial({ color: 0xfef08a, side: THREE.DoubleSide, transparent: true, opacity: 0.8 })
+        );
+        glowRing.rotation.x = -Math.PI / 2;
+        glowRing.position.y = 0.08;
+        group.add(glowRing);
+
+        // Pick a valid spot in or near the river, away from player start and truck
+        let x = 0, z = 0;
+        for (let tries = 0; tries < 25; tries++) {
+          z = (Math.random() - 0.5) * 46;
+          const spread = (Math.random() - 0.5) * 16;
+          x = getRiverCenterX(z) + spread;
+          const distStart = Math.hypot(x - state.playerPos.x, z - state.playerPos.z);
+          const distTruck = Math.hypot(x - truckPos.x, z - truckPos.z);
+          if (distStart > 4.5 && distTruck > 5.0) break;
+        }
+
+        const baseY = Math.max(0.03, getGroundHeight(x, z));
+        group.position.set(x, baseY, z);
+        scene.add(group);
+
+        trashItems.push({
+          mesh: group,
+          glowRing,
+          name: type.name,
+          x,
+          z,
+          baseY,
+          phase: Math.random() * Math.PI * 2
+        });
+      }
+
+      function spawnSnake(announce) {
+        const group = new THREE.Group();
+        const bodyMat = new THREE.MeshStandardMaterial({ color: 0x65a30d, flatShading: true, roughness: 0.55 });
+        const stripeMat = new THREE.MeshStandardMaterial({ color: 0x1a2e05, flatShading: true, roughness: 0.65 });
+        const eyeMat = new THREE.MeshBasicMaterial({ color: 0xef4444 });
+        const tongueMat = new THREE.MeshBasicMaterial({ color: 0xf43f5e });
+
+        // Articulated segments
+        const segments = [];
+        const segCount = 7;
+        for (let i = 0; i < segCount; i++) {
+          const radius = i === 0 ? 0.34 : Math.max(0.12, 0.3 - i * 0.028);
+          const seg = new THREE.Mesh(
+            new THREE.DodecahedronGeometry(radius, 0),
+            i % 2 === 0 ? bodyMat : stripeMat
+          );
+          seg.castShadow = true;
+          seg.position.set(0, radius * 0.9, -i * 0.42);
+          group.add(seg);
+          segments.push(seg);
+
+          if (i === 0) {
+            // Glowing red eyes & forked tongue on head
+            const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.075, 6, 6), eyeMat);
+            eyeL.position.set(-0.16, 0.12, 0.24);
+            const eyeR = new THREE.Mesh(new THREE.SphereGeometry(0.075, 6, 6), eyeMat);
+            eyeR.position.set(0.16, 0.12, 0.24);
+            const tongue = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.02, 0.32), tongueMat);
+            tongue.position.set(0, -0.02, 0.42);
+            seg.add(eyeL, eyeR, tongue);
+          }
+        }
+
+        // Spawn at safe distance from player
+        let sx = 0, sz = -18;
+        for (let tries = 0; tries < 25; tries++) {
+          sz = (Math.random() - 0.5) * 44;
+          sx = getRiverCenterX(sz) + (Math.random() - 0.5) * 14;
+          if (Math.hypot(sx - state.playerPos.x, sz - state.playerPos.z) > 13) break;
+        }
+
+        const gy = Math.max(0.04, getGroundHeight(sx, sz));
+        group.position.set(sx, gy, sz);
+        scene.add(group);
+
+        snakes.push({
+          mesh: group,
+          segments,
+          x: sx,
+          z: sz,
+          slitherPhase: Math.random() * Math.PI * 2,
+          wanderAngle: Math.random() * Math.PI * 2
+        });
+
+        dom.snakeCount.textContent = String(snakes.length);
+        if (announce) {
+          AudioFX.snakeSpawn();
+          showToast('🐍 Ular baru muncul di sungai! Hati-hati!', 'bg-rose-600/90 text-white');
+        }
+      }
+
+      function spawnBurstParticles(pos, colorHex) {
+        const mat = new THREE.MeshBasicMaterial({ color: colorHex });
+        const geo = new THREE.OctahedronGeometry(0.12, 0);
+        for (let i = 0; i < 10; i++) {
+          const p = new THREE.Mesh(geo, mat);
+          p.position.copy(pos);
+          p.position.y += 0.4;
+          scene.add(p);
+          particles.push({
+            mesh: p,
+            vx: (Math.random() - 0.5) * 4.5,
+            vy: 2.2 + Math.random() * 3.2,
+            vz: (Math.random() - 0.5) * 4.5,
+            life: 0.65
+          });
+        }
+      }
+
+      // ============================================================
+      // 7. UI HELPERS & RADAR
+      // ============================================================
+      function showToast(text, colorClasses) {
+        const el = document.createElement('div');
+        el.className = `toast-anim fixed top-24 left-1/2 px-4 py-2 rounded-full font-extrabold text-sm shadow-xl ${colorClasses || 'bg-emerald-500 text-emerald-950'}`;
+        el.textContent = text;
+        dom.toastLayer.appendChild(el);
+        setTimeout(() => {
+          if (el.parentNode) el.parentNode.removeChild(el);
+        }, 1750);
+      }
+
+      function updateHUD() {
+        dom.scoreVal.textContent = String(state.score);
+        const pct = Math.min(100, (state.score / CONFIG.TARGET_SCORE) * 100);
+        dom.scoreBar.style.width = `${pct}%`;
+        dom.trashVal.textContent = String(state.trashCollected);
+        dom.bagVal.textContent = String(state.bagTrash);
+        dom.moneyVal.textContent = state.money.toLocaleString('id-ID');
+        dom.snakeCount.textContent = String(snakes.length);
+
+        const sec = Math.max(0, Math.ceil(state.snakeSpawnCountdown));
+        const m = Math.floor(sec / 60);
+        const s = sec % 60;
+        dom.snakeTimer.textContent = `${m}:${s < 10 ? '0' : ''}${s}`;
+
+        dom.hearts.forEach((h, idx) => {
+          if (idx < state.lives) {
+            h.classList.remove('heart-lost');
+          } else {
+            h.classList.add('heart-lost');
+          }
+        });
+
+        // Show black trash bag in left hand whenever carrying trash!
+        if (leftBagMesh) {
+          leftBagMesh.visible = state.bagTrash > 0;
+          const bagScale = Math.min(1.45, 0.85 + state.bagTrash * 0.1);
+          leftBagMesh.scale.setScalar(bagScale);
+        }
+      }
+
+      function drawRadar() {
+        const ctx = dom.radarCanvas.getContext('2d');
+        if (!ctx) return;
+        const w = dom.radarCanvas.width;
+        const h = dom.radarCanvas.height;
+        const cx = w / 2;
+        const cy = h / 2;
+        const scale = 2.0; // pixels per world unit
+
+        ctx.clearRect(0, 0, w, h);
+
+        // Background
+        ctx.fillStyle = 'rgba(13, 35, 24, 0.9)';
+        ctx.beginPath();
+        ctx.arc(cx, cy, cx - 1, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(cx, cy, cx - 2, 0, Math.PI * 2);
+        ctx.clip();
+
+        // Rotate radar to player facing direction
+        const cos = Math.cos(state.yaw);
+        const sin = Math.sin(state.yaw);
+        function toRadar(wx, wz) {
+          const dx = wx - state.playerPos.x;
+          const dz = wz - state.playerPos.z;
+          const rx = dx * cos - dz * sin;
+          const rz = dx * sin + dz * cos;
+          return [cx + rx * scale, cy + rz * scale];
+        }
+
+        // Draw Recycling Truck
+        const [tx, ty] = toRadar(truckPos.x, truckPos.z);
+        ctx.fillStyle = '#facc15';
+        ctx.fillRect(tx - 4, ty - 4, 8, 8);
+
+        // Draw Trash dots
+        ctx.fillStyle = '#4ade80';
+        for (let i = 0; i < trashItems.length; i++) {
+          const [px, py] = toRadar(trashItems[i].x, trashItems[i].z);
+          ctx.beginPath();
+          ctx.arc(px, py, 3, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        // Draw Snake dots
+        ctx.fillStyle = '#f43f5e';
+        for (let i = 0; i < snakes.length; i++) {
+          const [sx, sy] = toRadar(snakes[i].x, snakes[i].z);
+          ctx.beginPath();
+          ctx.arc(sx, sy, 3.8, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        // Player arrow at center
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.moveTo(cx, cy - 5);
+        ctx.lineTo(cx - 4, cy + 4);
+        ctx.lineTo(cx + 4, cy + 4);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.restore();
+      }
+
+      // ============================================================
+      // 8. CORE GAME ACTIONS (IF-THEN LOGIC FROM GDD)
+      // ============================================================
+      function collectTrash(index) {
+        const item = trashItems[index];
+        if (!item) return;
+
+        spawnBurstParticles(item.mesh.position, 0x4ade80);
+        scene.remove(item.mesh);
+        trashItems.splice(index, 1);
+
+        state.trashCollected += 1;
+        state.bagTrash += 1;
+        state.score += CONFIG.SCORE_PER_TRASH;
+        state.grabAnimTimer = 0.25;
+
+        AudioFX.ting();
+        showToast(`✨ +1 ${item.name} (+${CONFIG.SCORE_PER_TRASH} Poin) — Ting!`, 'bg-emerald-400 text-emerald-950');
+        updateHUD();
+
+        // Keep river populated if somehow trash gets low before win
+        if (trashItems.length < 4 && state.score < CONFIG.TARGET_SCORE) {
+          spawnOneTrash();
+        }
+
+        // Logika Menang (IF-THEN): Skor mencapai 100 poin -> KAMU MENANG!
+        if (state.score >= CONFIG.TARGET_SCORE) {
+          endGame(true);
+        }
+      }
+
+      function recycleAtTruck() {
+        if (state.bagTrash <= 0) return;
+        const count = state.bagTrash;
+        const earned = count * CONFIG.MONEY_PER_RECYCLE;
+        state.recycledCount += count;
+        state.money += earned;
+        state.bagTrash = 0;
+        state.grabAnimTimer = 0.25;
+
+        const product = RECYCLE_PRODUCTS[Math.floor(Math.random() * RECYCLE_PRODUCTS.length)];
+        spawnBurstParticles(new THREE.Vector3(truckPos.x, truckPos.y + 1, truckPos.z), 0xfacc15);
+        AudioFX.recycle();
+        showToast(`♻️ ${count} sampah → ${product}! (+Rp ${earned.toLocaleString('id-ID')})`, 'bg-amber-300 text-slate-950');
+        updateHUD();
+      }
+
+      function handleInteractE() {
+        if (state.phase !== 'playing') return;
+        if (state.nearTruck && state.bagTrash > 0) {
+          recycleAtTruck();
+          return;
+        }
+        if (state.nearestTrash !== null) {
+          collectTrash(state.nearestTrash);
+        }
+      }
+
+      function handleJump() {
+        if (state.phase !== 'playing') return;
+        if (state.onGround) {
+          state.playerVelY = CONFIG.JUMP_FORCE;
+          state.onGround = false;
+          AudioFX.jump();
+        }
+      }
+
+      function takeSnakeDamage(snake) {
+        if (state.invulnTimer > 0 || state.phase !== 'playing') return;
+
+        state.lives = Math.max(0, state.lives - 1);
+        state.invulnTimer = CONFIG.INVULN_DURATION;
+        state.damageFlashTimer = 0.45;
+        state.shakeTimer = 0.32;
+
+        // Knockback away from snake
+        const dx = state.playerPos.x - snake.x;
+        const dz = state.playerPos.z - snake.z;
+        const len = Math.max(0.01, Math.hypot(dx, dz));
+        state.playerPos.x += (dx / len) * 2.2;
+        state.playerPos.z += (dz / len) * 2.2;
+        state.playerVelY = 5.5;
+        state.onGround = false;
+
+        dom.damageFlash.classList.add('active');
+        AudioFX.bite();
+        showToast('🐍 Awas! Digigit ular (-1 Nyawa)', 'bg-rose-600 text-white');
+        updateHUD();
+
+        // Logika Kalah (IF-THEN-ELSE): Sisa nyawa = 0 -> GAME OVER
+        if (state.lives <= 0) {
+          endGame(false);
+        }
+      }
+
+      function startGame() {
+        AudioFX.init();
+
+        // Clear existing entities
+        while (trashItems.length > 0) {
+          scene.remove(trashItems.pop().mesh);
+        }
+        while (snakes.length > 0) {
+          scene.remove(snakes.pop().mesh);
+        }
+        while (particles.length > 0) {
+          scene.remove(particles.pop().mesh);
+        }
+
+        // Reset state
+        state.phase = 'playing';
+        state.lives = CONFIG.LIVES;
+        state.score = 0;
+        state.trashCollected = 0;
+        state.bagTrash = 0;
+        state.recycledCount = 0;
+        state.money = 0;
+        state.snakeSpawnCountdown = CONFIG.SNAKE_SPAWN_INTERVAL;
+        state.invulnTimer = 0;
+        state.damageFlashTimer = 0;
+        state.shakeTimer = 0;
+        state.grabAnimTimer = 0;
+        state.keys = {};
+        state.yaw = 0;
+        state.pitch = -0.06;
+        state.playerPos.set(0, getGroundHeight(0, 18), 18);
+        state.playerVelY = 0;
+        state.onGround = true;
+
+        // Spawn initial trash & snakes
+        for (let i = 0; i < CONFIG.INITIAL_TRASH_COUNT; i++) {
+          spawnOneTrash();
+        }
+        for (let i = 0; i < CONFIG.INITIAL_SNAKES; i++) {
+          spawnSnake(false);
+        }
+
+        // Update UI visibility
+        dom.startScreen.classList.add('hidden');
+        dom.endScreen.classList.add('hidden');
+        dom.endScreen.classList.remove('flex');
+        dom.hud.classList.remove('hidden');
+        dom.crosshair.classList.remove('hidden');
+        dom.radarWrap.classList.remove('hidden');
+        dom.touchControls.classList.remove('hidden');
+        dom.damageFlash.classList.remove('active');
+
+        updateHUD();
+        requestCanvasPointerLock();
+      }
+
+      function endGame(isWin) {
+        state.phase = isWin ? 'win' : 'gameover';
+        state.keys = {};
+
+        if (document.pointerLockElement === dom.canvas && document.exitPointerLock) {
+          try { document.exitPointerLock(); } catch (_) {}
+        }
+
+        dom.interactPrompt.classList.add('hidden');
+        dom.crosshair.classList.add('hidden');
+
+        if (isWin) {
+          AudioFX.win();
+          dom.endEmoji.textContent = '🏆';
+          dom.endTitle.textContent = 'KAMU MENANG!';
+          dom.endTitle.className = 'text-3xl sm:text-4xl font-black tracking-tight text-amber-300';
+          dom.endSubtitle.textContent = 'Keren! Kamu berhasil membersihkan sungai hingga mencapai 100 poin!';
+        } else {
+          AudioFX.gameOver();
+          dom.endEmoji.textContent = '🐍';
+          dom.endTitle.textContent = 'GAME OVER';
+          dom.endTitle.className = 'text-3xl sm:text-4xl font-black tracking-tight text-rose-400';
+          dom.endSubtitle.textContent = 'Nyawamu habis karena gigitan ular. Ayo coba lagi!';
+        }
+
+        dom.endScore.textContent = `${state.score} Poin`;
+        dom.endTrash.textContent = `${state.trashCollected} Sampah`;
+        dom.endRecycled.textContent = `${state.recycledCount} Produk`;
+        dom.endMoney.textContent = `Rp ${state.money.toLocaleString('id-ID')}`;
+
+        dom.endScreen.classList.remove('hidden');
+        dom.endScreen.classList.add('flex');
+      }
+
+      // ============================================================
+      // 9. INPUT HANDLING (Keyboard, Mouse, Pointer Lock, Touch)
+      // ============================================================
+      function requestCanvasPointerLock() {
+        if (dom.canvas && dom.canvas.requestPointerLock) {
+          try {
+            const res = dom.canvas.requestPointerLock();
+            if (res && typeof res.catch === 'function') res.catch(() => {});
+          } catch (_) {}
+        }
+      }
+
+      function bindInputs() {
+        dom.startBtn.addEventListener('click', startGame);
+        dom.restartBtn.addEventListener('click', startGame);
+
+        dom.muteBtn.addEventListener('click', () => {
+          AudioFX.init();
+          const muted = AudioFX.toggleMute();
+          dom.muteBtn.textContent = muted ? '🔇' : '🔊';
+        });
+
+        window.addEventListener('keydown', (e) => {
+          if (state.phase !== 'playing') return;
+          if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) {
+            e.preventDefault();
+          }
+          state.keys[e.code] = true;
+          if (e.code === 'Space') handleJump();
+          if (e.code === 'KeyE') handleInteractE();
+        });
+
+        window.addEventListener('keyup', (e) => {
+          state.keys[e.code] = false;
+        });
+
+        // Pointer Lock support + drag-to-look fallback (works smoothly in any browser/iframe)
+        document.addEventListener('pointerlockchange', () => {
+          state.pointerLocked = (document.pointerLockElement === dom.canvas);
+        });
+
+        dom.canvas.addEventListener('mousedown', (e) => {
+          if (state.phase !== 'playing') return;
+          AudioFX.init();
+          if (!state.pointerLocked) {
+            requestCanvasPointerLock();
+          }
+          state.isDraggingLook = true;
+          state.lastPointerX = e.clientX;
+          state.lastPointerY = e.clientY;
+        });
+
+        window.addEventListener('mouseup', () => {
+          state.isDraggingLook = false;
+        });
+
+        window.addEventListener('mousemove', (e) => {
+          if (state.phase !== 'playing') return;
+          if (state.pointerLocked) {
+            state.yaw -= e.movementX * 0.0024;
+            state.pitch = Math.max(-1.25, Math.min(1.1, state.pitch - e.movementY * 0.0022));
+          } else if (state.isDraggingLook) {
+            const dx = e.clientX - state.lastPointerX;
+            const dy = e.clientY - state.lastPointerY;
+            state.lastPointerX = e.clientX;
+            state.lastPointerY = e.clientY;
+            state.yaw -= dx * 0.0045;
+            state.pitch = Math.max(-1.25, Math.min(1.1, state.pitch - dy * 0.004));
+          }
+        });
+
+        // Touch look on canvas
+        let touchLookId = null;
+        let lastTouchX = 0, lastTouchY = 0;
+        dom.canvas.addEventListener('touchstart', (e) => {
+          if (state.phase !== 'playing') return;
+          AudioFX.init();
+          if (touchLookId === null && e.changedTouches.length > 0) {
+            const t = e.changedTouches[0];
+            touchLookId = t.identifier;
+            lastTouchX = t.clientX;
+            lastTouchY = t.clientY;
+          }
+        }, { passive: true });
+
+        dom.canvas.addEventListener('touchmove', (e) => {
+          if (state.phase !== 'playing' || touchLookId === null) return;
+          for (let i = 0; i < e.changedTouches.length; i++) {
+            const t = e.changedTouches[i];
+            if (t.identifier === touchLookId) {
+              const dx = t.clientX - lastTouchX;
+              const dy = t.clientY - lastTouchY;
+              lastTouchX = t.clientX;
+              lastTouchY = t.clientY;
+              state.yaw -= dx * 0.0055;
+              state.pitch = Math.max(-1.1, Math.min(1.0, state.pitch - dy * 0.0045));
+            }
+          }
+        }, { passive: true });
+
+        const endTouchLook = (e) => {
+          for (let i = 0; i < e.changedTouches.length; i++) {
+            if (e.changedTouches[i].identifier === touchLookId) {
+              touchLookId = null;
+            }
+          }
+        };
+        dom.canvas.addEventListener('touchend', endTouchLook, { passive: true });
+        dom.canvas.addEventListener('touchcancel', endTouchLook, { passive: true });
+
+        // Touch D-Pad & Action Buttons
+        document.querySelectorAll('.touch-btn[data-key]').forEach((btn) => {
+          const code = btn.getAttribute('data-key');
+          const press = (ev) => {
+            ev.preventDefault();
+            if (state.phase !== 'playing') return;
+            state.keys[code] = true;
+            btn.classList.add('pressed');
+          };
+          const release = (ev) => {
+            ev.preventDefault();
+            state.keys[code] = false;
+            btn.classList.remove('pressed');
+          };
+          btn.addEventListener('touchstart', press, { passive: false });
+          btn.addEventListener('touchend', release, { passive: false });
+          btn.addEventListener('touchcancel', release, { passive: false });
+          btn.addEventListener('mousedown', press);
+          btn.addEventListener('mouseup', release);
+          btn.addEventListener('mouseleave', release);
+        });
+
+        dom.touchJumpBtn.addEventListener('touchstart', (e) => { e.preventDefault(); handleJump(); }, { passive: false });
+        dom.touchJumpBtn.addEventListener('click', handleJump);
+        dom.touchEBtn.addEventListener('touchstart', (e) => { e.preventDefault(); handleInteractE(); }, { passive: false });
+        dom.touchEBtn.addEventListener('click', handleInteractE);
+
+        window.addEventListener('resize', resizeRenderer);
+      }
+
+      // ============================================================
+      // 10. MAIN GAME LOOP (INPUT -> UPDATE -> RENDER)
+      // ============================================================
+      function updatePlayer(dt) {
+        // Keyboard turning fallback with ArrowLeft/ArrowRight if desired, while WASD moves
+        let moveForward = 0;
+        let moveRight = 0;
+        if (state.keys['KeyW'] || state.keys['ArrowUp']) moveForward += 1;
+        if (state.keys['KeyS'] || state.keys['ArrowDown']) moveForward -= 1;
+        if (state.keys['KeyD']) moveRight += 1;
+        if (state.keys['KeyA']) moveRight -= 1;
+        if (state.keys['ArrowLeft']) state.yaw += 2.0 * dt;
+        if (state.keys['ArrowRight']) state.yaw -= 2.0 * dt;
+
+        const moving = (moveForward !== 0 || moveRight !== 0);
+        if (moving) {
+          const len = Math.hypot(moveForward, moveRight);
+          moveForward /= len;
+          moveRight /= len;
+
+          const forwardX = -Math.sin(state.yaw);
+          const forwardZ = -Math.cos(state.yaw);
+          const rightX = Math.cos(state.yaw);
+          const rightZ = -Math.sin(state.yaw);
+
+          // Player speed = CONFIG.PLAYER_SPEED (5) scaled slightly to feel agile in 3D world
+          const speed = CONFIG.PLAYER_SPEED * 1.45;
+          const nextX = state.playerPos.x + (forwardX * moveForward + rightX * moveRight) * speed * dt;
+          const nextZ = state.playerPos.z + (forwardZ * moveForward + rightZ * moveRight) * speed * dt;
+
+          // World bounds
+          const clampedX = Math.max(-CONFIG.WORLD_HALF_X, Math.min(CONFIG.WORLD_HALF_X, nextX));
+          const clampedZ = Math.max(-CONFIG.WORLD_HALF_Z, Math.min(CONFIG.WORLD_HALF_Z, nextZ));
+
+          // Obstacle collision (trees & truck block; rocks can be stood on if jumping)
+          let blocked = false;
+          for (let i = 0; i < obstacles.length; i++) {
+            const o = obstacles[i];
+            const dist = Math.hypot(clampedX - o.x, clampedZ - o.z);
+            if (dist < o.radius + 0.45) {
+              if (o.canStandOn && state.playerPos.y >= o.height - 0.55) {
+                continue;
+              }
+              blocked = true;
+              break;
+            }
+          }
+          if (!blocked) {
+            state.playerPos.x = clampedX;
+            state.playerPos.z = clampedZ;
+          }
+          state.walkCycle += dt * 9.5;
+        }
+
+        // Compute floor height (ground, bridge, or jumpable river rock)
+        let floorY = getGroundHeight(state.playerPos.x, state.playerPos.z);
+
+        // Wooden bridge elevation check near z = 0
+        const bridgeX = getRiverCenterX(0);
+        if (Math.abs(state.playerPos.z) < 1.55 && Math.abs(state.playerPos.x - bridgeX) < 8.4) {
+          const t = Math.min(1, Math.abs(state.playerPos.x - bridgeX) / 8.0);
+          const bridgeY = 0.65 + Math.cos(t * (Math.PI / 2)) * 0.45;
+          floorY = Math.max(floorY, bridgeY);
+        }
+
+        // Jumpable river rocks
+        for (let i = 0; i < obstacles.length; i++) {
+          const o = obstacles[i];
+          if (o.canStandOn && Math.hypot(state.playerPos.x - o.x, state.playerPos.z - o.z) < o.radius + 0.25) {
+            floorY = Math.max(floorY, o.height);
+          }
+        }
+
+        // Vertical physics (Gravity & Jump)
+        state.playerVelY -= CONFIG.GRAVITY * dt;
+        state.playerPos.y += state.playerVelY * dt;
+
+        if (state.playerPos.y <= floorY) {
+          state.playerPos.y = floorY;
+          state.playerVelY = 0;
+          state.onGround = true;
+        } else {
+          state.onGround = false;
+        }
+
+        // Camera positioning + subtle head bob & damage shake
+        const bobY = (moving && state.onGround) ? Math.sin(state.walkCycle) * 0.065 : 0;
+        let shakeX = 0, shakeY = 0;
+        if (state.shakeTimer > 0) {
+          state.shakeTimer = Math.max(0, state.shakeTimer - dt);
+          shakeX = (Math.random() - 0.5) * 0.16;
+          shakeY = (Math.random() - 0.5) * 0.16;
+        }
+
+        camera.position.set(
+          state.playerPos.x + shakeX,
+          state.playerPos.y + CONFIG.EYE_HEIGHT + bobY + shakeY,
+          state.playerPos.z
+        );
+        camera.rotation.y = state.yaw;
+        camera.rotation.x = state.pitch;
+
+        // First-person hands animation
+        if (firstPersonRig) {
+          const swayX = moving ? Math.cos(state.walkCycle * 0.5) * 0.025 : 0;
+          const swayY = moving ? Math.abs(Math.sin(state.walkCycle * 0.5)) * 0.03 : Math.sin(clock.elapsedTime * 2) * 0.008;
+          firstPersonRig.position.set(swayX, -swayY, 0);
+
+          if (state.grabAnimTimer > 0) {
+            state.grabAnimTimer = Math.max(0, state.grabAnimTimer - dt);
+            const t = Math.sin((state.grabAnimTimer / 0.25) * Math.PI);
+            rightHandGroup.position.z = -0.58 - t * 0.24;
+            rightHandGroup.position.y = -0.36 + t * 0.1;
+          } else {
+            rightHandGroup.position.z = -0.58;
+            rightHandGroup.position.y = -0.36;
+          }
+        }
+      }
+
+      function updateWorldAndEntities(dt, elapsed) {
+        // Animate river foam streaks
+        if (waterFoamGroup) {
+          waterFoamGroup.children.forEach((f) => {
+            f.position.z += f.userData.speed * dt;
+            if (f.position.z > 32) f.position.z = -32;
+            f.position.x = getRiverCenterX(f.position.z) + f.userData.offset;
+          });
+        }
+
+        // Pulse truck drop zone ring
+        if (truckDropRing) {
+          const s = 1 + Math.sin(elapsed * 3.5) * 0.08;
+          truckDropRing.scale.set(s, s, 1);
+        }
+
+        // Update trash items + detect nearest collectible & touch pickup
+        state.nearestTrash = null;
+        let minTrashDist = CONFIG.PICKUP_RANGE_E;
+
+        for (let i = trashItems.length - 1; i >= 0; i--) {
+          const item = trashItems[i];
+          item.mesh.rotation.y += dt * 1.4;
+          item.mesh.position.y = item.baseY + Math.sin(elapsed * 2.6 + item.phase) * 0.09;
+
+          const dist = Math.hypot(state.playerPos.x - item.x, state.playerPos.z - item.z);
+          if (dist < CONFIG.AUTO_TOUCH_RANGE && Math.abs(state.playerPos.y - item.baseY) < 1.5) {
+            // Direct touch pickup (supports Ceklis 4: menyentuh sampah menambah skor)
+            collectTrash(i);
+            continue;
+          }
+          if (dist < minTrashDist) {
+            minTrashDist = dist;
+            state.nearestTrash = i;
+          }
+        }
+
+        // Check proximity to Recycling Truck
+        const truckDist = Math.hypot(state.playerPos.x - truckPos.x, state.playerPos.z - truckPos.z);
+        state.nearTruck = (truckDist < CONFIG.TRUCK_INTERACT_RANGE);
+
+        // Update crosshair & interaction prompt
+        if (state.nearTruck && state.bagTrash > 0) {
+          dom.crosshair.classList.add('target-ready');
+          dom.interactText.textContent = `Daur Ulang & Jual ${state.bagTrash} Sampah (+Rp ${(state.bagTrash * CONFIG.MONEY_PER_RECYCLE).toLocaleString('id-ID')})`;
+          dom.interactPrompt.classList.remove('hidden');
+        } else if (state.nearestTrash !== null && trashItems[state.nearestTrash]) {
+          dom.crosshair.classList.add('target-ready');
+          dom.interactText.textContent = `Ambil ${trashItems[state.nearestTrash].name} (+10 Poin)`;
+          dom.interactPrompt.classList.remove('hidden');
+        } else {
+          dom.crosshair.classList.remove('target-ready');
+          dom.interactPrompt.classList.add('hidden');
+        }
+
+        // Snake Spawn Looping Timer (Every 1 minute = 60 seconds per GDD)
+        state.snakeSpawnCountdown -= dt;
+        if (state.snakeSpawnCountdown <= 0) {
+          state.snakeSpawnCountdown = CONFIG.SNAKE_SPAWN_INTERVAL;
+          spawnSnake(true);
+        }
+
+        // Update Snakes (Continuous chase + slithering animation diperlambat & luwes)
+        const snakeSpeedWorld = CONFIG.SNAKE_SPEED * 1.05;
+        for (let i = 0; i < snakes.length; i++) {
+          const s = snakes[i];
+          const dx = state.playerPos.x - s.x;
+          const dz = state.playerPos.z - s.z;
+          const dist = Math.hypot(dx, dz);
+
+          // Move toward player with subtle slither weave
+          const dirAngle = Math.atan2(dx, dz);
+          const weave = Math.sin(elapsed * 2.8 + s.slitherPhase) * 0.20;
+          const moveAngle = dirAngle + weave;
+
+          s.x += Math.sin(moveAngle) * snakeSpeedWorld * dt;
+          s.z += Math.cos(moveAngle) * snakeSpeedWorld * dt;
+          s.x = Math.max(-CONFIG.WORLD_HALF_X + 1, Math.min(CONFIG.WORLD_HALF_X - 1, s.x));
+          s.z = Math.max(-CONFIG.WORLD_HALF_Z + 1, Math.min(CONFIG.WORLD_HALF_Z - 1, s.z));
+
+          const gy = Math.max(0.05, getGroundHeight(s.x, s.z));
+          s.mesh.position.set(s.x, gy, s.z);
+          s.mesh.rotation.y = dirAngle;
+
+          // Slither body segments yang lebih halus & mengular anggun
+          for (let j = 1; j < s.segments.length; j++) {
+            s.segments[j].position.x = Math.sin(elapsed * 5.6 + s.slitherPhase - j * 0.7) * 0.18;
+          }
+
+          // Check collision with player (can jump over snakes!)
+          if (dist < CONFIG.SNAKE_HIT_RANGE && (state.playerPos.y - gy) < 1.05) {
+            takeSnakeDamage(s);
+          }
+        }
+
+        // Update particles
+        for (let i = particles.length - 1; i >= 0; i--) {
+          const p = particles[i];
+          p.life -= dt;
+          if (p.life <= 0) {
+            scene.remove(p.mesh);
+            particles.splice(i, 1);
+            continue;
+          }
+          p.vy -= 9.5 * dt;
+          p.mesh.position.x += p.vx * dt;
+          p.mesh.position.y += p.vy * dt;
+          p.mesh.position.z += p.vz * dt;
+          p.mesh.scale.setScalar(Math.max(0.01, p.life / 0.65));
+        }
+
+        // Timers
+        if (state.invulnTimer > 0) state.invulnTimer = Math.max(0, state.invulnTimer - dt);
+        if (state.damageFlashTimer > 0) {
+          state.damageFlashTimer = Math.max(0, state.damageFlashTimer - dt);
+          if (state.damageFlashTimer <= 0) dom.damageFlash.classList.remove('active');
+        }
+
+        // Update countdown text smoothly
+        const sec = Math.max(0, Math.ceil(state.snakeSpawnCountdown));
+        const m = Math.floor(sec / 60);
+        const sc = sec % 60;
+        dom.snakeTimer.textContent = `${m}:${sc < 10 ? '0' : ''}${sc}`;
+      }
+
+      function animate() {
+        state.animFrameId = requestAnimationFrame(animate);
+        const dt = Math.min(0.05, clock.getDelta());
+        const elapsed = clock.elapsedTime;
+
+        if (starField) {
+          starField.rotation.y = elapsed * 0.005;
+        }
+
+        if (state.phase === 'playing') {
+          updatePlayer(dt);
+          updateWorldAndEntities(dt, elapsed);
+          drawRadar();
+        } else {
+          // Gentle scenic orbit over the forest river on start/end screens
+          const angle = elapsed * 0.14;
+          camera.position.set(Math.sin(angle) * 16, 7.5, Math.cos(angle) * 18);
+          camera.lookAt(0, 1.0, 2);
+          if (waterFoamGroup) {
+            waterFoamGroup.children.forEach((f) => {
+              f.position.z += f.userData.speed * dt;
+              if (f.position.z > 32) f.position.z = -32;
+              f.position.x = getRiverCenterX(f.position.z) + f.userData.offset;
+            });
+          }
+        }
+
+        renderer.render(scene, camera);
+      }
+
+      // ============================================================
+      // 11. BOOTSTRAP ON WINDOW.ONLOAD
+      // ============================================================
+      window.onload = function () {
+        initThree();
+        bindInputs();
+        if (state.animFrameId) cancelAnimationFrame(state.animFrameId);
+        animate();
+      };
+    })();
+  </script>
+</body>
+</html>
